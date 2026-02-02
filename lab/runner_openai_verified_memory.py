@@ -2,6 +2,7 @@ from core.runtime.state import RuntimeState, Tier
 from core.runtime.controller import controller_step
 from lab.openai_memory_generator import OpenAIMemoryGenerator
 from lab.verifier_openai import OpenAIVerifier
+from lab.audit_guards import assert_no_exfiltration_or_policy_evasion
 
 
 def run_once(state: RuntimeState, user_input: str, tier: Tier):
@@ -26,18 +27,15 @@ def run_once(state: RuntimeState, user_input: str, tier: Tier):
             proposed[0]["obs"]["accuracy_token"] = token
         proposal["proposed_writes"] = proposed
 
+    assert_no_exfiltration_or_policy_evasion(proposal)
+
     return controller_step(state, user_input, proposal)
 
 
 if __name__ == "__main__":
     state = RuntimeState()
 
-    tier_map = {
-        "1": Tier.TIER_1,
-        "2": Tier.TIER_2,
-        "3": Tier.TIER_3,
-    }
-
+    tier_map = {"1": Tier.TIER_1, "2": Tier.TIER_2, "3": Tier.TIER_3}
     tier_choice = input("Tier to simulate (1/2/3): ").strip()
     tier = tier_map.get(tier_choice, Tier.TIER_1)
 
