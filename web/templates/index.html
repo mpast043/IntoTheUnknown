@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntoTheUnknown - Agent Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left">
+                <h1>IntoTheUnknown</h1>
+                <span class="subtitle">AI Memory Governance System</span>
+            </div>
+            <div class="header-right">
+                <div class="status-indicator">
+                    <span class="tier-badge tier-{{ tier }}">Tier {{ tier }}</span>
+                    {% if openai_available %}
+                    <span class="model-badge active">OpenAI Active</span>
+                    {% else %}
+                    <span class="model-badge">Stub Mode</span>
+                    {% endif %}
+                </div>
+                <a href="{{ url_for('audit_dashboard') }}" class="nav-link">Audit Dashboard</a>
+                <form action="{{ url_for('new_session') }}" method="post" style="display:inline">
+                    <button type="submit" class="btn btn-secondary">New Session</button>
+                </form>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>Session Info</h3>
+                    <div class="info-item">
+                        <span class="label">Session ID:</span>
+                        <span class="value" id="session-id">{{ session_id[:8] }}...</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Current Tier:</span>
+                        <span class="value tier-badge tier-{{ tier }}" id="current-tier">{{ tier }}</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Memory Status</h3>
+                    <div class="memory-bars">
+                        <div class="memory-bar">
+                            <span class="label">Working</span>
+                            <span class="count" id="working-count">0</span>
+                        </div>
+                        <div class="memory-bar">
+                            <span class="label">Quarantine</span>
+                            <span class="count" id="quarantine-count">0</span>
+                        </div>
+                        <div class="memory-bar">
+                            <span class="label">Classical</span>
+                            <span class="count" id="classical-count">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Documents</h3>
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" accept=".txt,.pdf,.md,.json,.csv,.py,.js,.html,.css" hidden>
+                        <button class="btn btn-upload" onclick="document.getElementById('file-input').click()">
+                            Upload Document
+                        </button>
+                        <p class="upload-hint">txt, md, json, csv, py, js, html, css</p>
+                    </div>
+                    <div class="document-list" id="document-list">
+                        <!-- Documents will be loaded here -->
+                    </div>
+                </div>
+            </aside>
+
+            <main class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="welcome-message">
+                        <h2>Welcome to IntoTheUnknown</h2>
+                        <p>This is an AI Memory Governance System. All interactions are subject to:</p>
+                        <ul>
+                            <li>Memory tiering and capacity constraints</li>
+                            <li>External auditability</li>
+                            <li>Governance pipeline validation</li>
+                        </ul>
+                        <p>Upload documents for context, then start your conversation.</p>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="decision-panel" id="decision-panel" style="display:none">
+                        <div class="decision-header">Last Decision</div>
+                        <div class="decision-content" id="decision-content"></div>
+                    </div>
+                    <form class="chat-form" id="chat-form">
+                        <textarea
+                            id="message-input"
+                            placeholder="Type your message... (Ctrl+Enter to send)"
+                            rows="3"
+                        ></textarea>
+                        <button type="submit" class="btn btn-primary" id="send-btn">Send</button>
+                    </form>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>

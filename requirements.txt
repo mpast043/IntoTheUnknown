@@ -1,0 +1,8 @@
+# Core framework has zero dependencies (Python 3 standard library only)
+# The following are optional dependencies for web UI and lab implementations
+
+# Web UI
+flask>=2.0.0
+
+# Lab implementations (optional)
+openai>=1.0.0

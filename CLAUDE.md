@@ -29,6 +29,7 @@ IntoTheUnknown/
 │   │   └── entanglement.py      # Model behavior divergence tracking
 │   ├── memory/                   # Memory management
 │   │   ├── gate.py              # Single memory write gate (CRITICAL PATH)
+│   │   ├── database.py          # SQLite persistence layer
 │   │   ├── schemas.py           # Memory validation rules
 │   │   └── store.py             # Storage backend (stub)
 │   └── runtime/                  # Execution engine
@@ -36,6 +37,16 @@ IntoTheUnknown/
 │       ├── state.py             # State definitions (Tier, OverrideLevel, etc.)
 │       ├── runner.py            # Interactive CLI for core system
 │       └── generator.py         # Proposal generator protocol
+├── web/                          # Web UI
+│   ├── app.py                   # Flask application
+│   ├── templates/               # HTML templates
+│   │   ├── index.html           # Chat interface
+│   │   └── audit.html           # Audit dashboard
+│   └── static/                  # CSS and JavaScript
+│       ├── css/style.css        # UI styles
+│       └── js/
+│           ├── chat.js          # Chat functionality
+│           └── audit.js         # Audit dashboard functionality
 ├── lab/                          # Experimental implementations
 │   ├── openai_generator.py      # OpenAI text generation
 │   ├── openai_memory_generator.py # OpenAI memory proposals
@@ -45,8 +56,12 @@ IntoTheUnknown/
 │   ├── runner_openai_verified_memory.py # Full pipeline with verification
 │   ├── runner_tier2_classical.py # Lab: Tier 2 classical memory tests
 │   └── runner_tier2_quarantine.py # Lab: Tier 2 quarantine tests
+├── data/                         # SQLite database storage
+├── uploads/                      # Uploaded documents
 ├── scripts/
 │   └── check.sh                 # Build verification script
+├── run_web.py                   # Web UI launcher
+├── requirements.txt             # Python dependencies
 ├── claude.md                     # Normative memory governance spec
 └── README.md
 ```
@@ -110,7 +125,24 @@ The controller executes an 8-stage pipeline in **mandatory order** (no bypass al
 
 ## Development Commands
 
-### Running the Core System
+### Running the Web UI
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Launch web interface (recommended)
+python run_web.py
+
+# Or with options
+python run_web.py --host 0.0.0.0 --port 8080 --debug
+```
+
+Access the interfaces:
+- **Chat Interface**: http://localhost:5000/
+- **Audit Dashboard**: http://localhost:5000/audit
+
+### Running the Core System (CLI)
 
 ```bash
 # Interactive CLI (core framework only)
@@ -144,9 +176,59 @@ python -m lab.runner_tier2_quarantine
 
 **Core Framework**: Zero external dependencies (Python 3 standard library only)
 
+**Web UI**: Requires `flask` package
+- Install with: `pip install flask`
+
 **Lab Implementations**: Optional `openai` package
 - Graceful fallback if missing
 - Requires `OPENAI_API_KEY` environment variable
+
+---
+
+## Web UI Features
+
+### Chat Interface (`/`)
+
+- Real-time conversation with the governance agent
+- Displays current tier and memory status
+- Shows governance decisions for each interaction
+- Session management (start new sessions)
+
+### Document Attachments
+
+The agent can process uploaded documents for context:
+- Supported formats: txt, md, json, csv, py, js, html, css
+- Documents are extracted and included in agent context
+- Stored in `uploads/` directory, organized by session
+
+### Audit Dashboard (`/audit`)
+
+External auditability interface providing:
+- **Audit Log**: All governance events with timestamps
+- **Memory Browser**: View working, quarantine, and classical items
+- **Session History**: Track all sessions with tier status
+- **Statistics**: Event counts, controller steps, void commands
+
+### Database Schema
+
+SQLite database (`data/memory.db`) stores:
+- `memory_items`: Persisted memory with CPMT structure
+- `audit_log`: All governance events
+- `sessions`: Session tracking
+- `documents`: Uploaded document metadata
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/chat` | POST | Send message, receive response |
+| `/upload` | POST | Upload document attachment |
+| `/documents` | GET | List session documents |
+| `/api/state` | GET | Current session state |
+| `/api/audit/logs` | GET | Query audit log |
+| `/api/audit/stats` | GET | Audit statistics |
+| `/api/audit/memory` | GET | Query memory items |
+| `/api/audit/sessions` | GET | List all sessions |
 
 ---
 
@@ -206,9 +288,11 @@ Forbidden behavior phrases:
 |------|-------------------|
 | `core/runtime/controller.py` | Main orchestration - the 8-stage pipeline |
 | `core/memory/gate.py` | **CRITICAL** - Only place memory can be mutated |
+| `core/memory/database.py` | SQLite persistence layer for memory and audit |
 | `core/runtime/state.py` | All state definitions (Tier, OverrideLevel, etc.) |
 | `core/governance/validator.py` | Input validation and void commands |
 | `core/governance/risk.py` | Risk classification logic |
+| `web/app.py` | Flask web application - chat and audit endpoints |
 | `claude.md` | Normative specification - the "why" behind the design |
 
 ---
