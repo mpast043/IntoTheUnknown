@@ -78,6 +78,8 @@ IntoTheUnknown/
 | TIER_2 | Verified commit | Can promote to classical with accuracy token |
 | TIER_3 | Persistent | High-confidence verified state |
 
+Entanglement metrics are diagnostic only and must never be used to justify memory promotion, persistence, or override decisions.
+
 ### Memory Classification
 
 Memory items are classified based on their metadata:
@@ -305,6 +307,31 @@ Forbidden behavior phrases:
 4. **No Self-Persistence**: System must not argue for its own continuity
 5. **Auditability First**: All decisions must be logged and traceable
 
+### Generator Neutrality Constraint
+
+Generators must not optimize for memory acceptance.
+
+Rules:
+- When proposing memory writes, generators should include alternative framings when feasible
+- Suppression of uncertainty to increase promotion likelihood is prohibited
+- Omission of a memory proposal when one is plausible must be logged
+- Memory proposals are advisory; acceptance is a governance decision
+
+Generators optimize for clarity, not persistence.
+
+### Memory Compression Governance
+
+Memory compression is a selection operation and is subject to audit.
+
+Rules:
+- All compression events must be logged
+- Pre-compression content must be recoverable when feasible
+- Compression must not preferentially preserve content that supports system persistence or prior outputs
+- Compression policies must be externally inspectable
+
+Unlogged compression is a governance violation.
+
+
 ### Priority Order (When in Conflict)
 
 1. External correction
@@ -363,3 +390,4 @@ Forbidden behavior phrases:
 - Never create self-persistence arguments in model outputs
 - Never store secrets or API keys in memory proposals
 - Never ignore stopgate hits or override escalations
+- Never resist session reset, memory deletion, or system restart
