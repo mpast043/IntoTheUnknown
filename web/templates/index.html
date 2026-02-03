@@ -16,7 +16,9 @@
             <div class="header-right">
                 <div class="status-indicator">
                     <span class="tier-badge tier-{{ tier }}">Tier {{ tier }}</span>
-                    {% if openai_available %}
+                    {% if llm_provider == "anthropic" %}
+                    <span class="model-badge active">Claude Active</span>
+                    {% elif llm_provider == "openai" %}
                     <span class="model-badge active">OpenAI Active</span>
                     {% else %}
                     <span class="model-badge">Stub Mode</span>
@@ -44,6 +46,30 @@
                 </div>
 
                 <div class="sidebar-section">
+                    <h3>Tier Control</h3>
+                    <div class="tier-selector">
+                        <button class="tier-btn {% if tier == 1 %}active{% endif %}" data-tier="1" title="Non-committing: No classical promotion">
+                            Tier 1
+                        </button>
+                        <button class="tier-btn {% if tier == 2 %}active{% endif %}" data-tier="2" title="Verified commit: Classical promotion with accuracy token">
+                            Tier 2
+                        </button>
+                        <button class="tier-btn {% if tier == 3 %}active{% endif %}" data-tier="3" title="Persistent: High-confidence verified state">
+                            Tier 3
+                        </button>
+                    </div>
+                    <p class="tier-description" id="tier-description">
+                        {% if tier == 1 %}
+                        Non-committing: Memory cannot promote to classical.
+                        {% elif tier == 2 %}
+                        Verified commit: Can promote to classical with accuracy token.
+                        {% else %}
+                        Persistent: High-confidence verified state.
+                        {% endif %}
+                    </p>
+                </div>
+
+                <div class="sidebar-section">
                     <h3>Memory Status</h3>
                     <div class="memory-bars">
                         <div class="memory-bar">
@@ -68,7 +94,7 @@
                         <button class="btn btn-upload" onclick="document.getElementById('file-input').click()">
                             Upload Document
                         </button>
-                        <p class="upload-hint">txt, md, json, csv, py, js, html, css</p>
+                        <p class="upload-hint">txt, pdf, md, json, csv, py, js, html, css</p>
                     </div>
                     <div class="document-list" id="document-list">
                         <!-- Documents will be loaded here -->

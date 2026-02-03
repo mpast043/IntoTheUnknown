@@ -4,5 +4,9 @@
 # Web UI
 flask>=2.0.0
 
-# Lab implementations (optional)
+# PDF support
+PyPDF2>=3.0.0
+
+# LLM integrations (optional - install one or both)
 openai>=1.0.0
+anthropic>=0.18.0

@@ -18,9 +18,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let isLoading = false;
 
+    // Tier selector elements
+    const tierButtons = document.querySelectorAll('.tier-btn');
+    const tierDescription = document.getElementById('tier-description');
+
     // Load initial state
     loadState();
     loadDocuments();
+
+    // Tier button clicks
+    tierButtons.forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const newTier = parseInt(this.dataset.tier);
+            await setTier(newTier);
+        });
+    });
 
     // Chat form submission
     chatForm.addEventListener('submit', async function(e) {
@@ -140,6 +152,52 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!tier) return;
         currentTier.textContent = tier;
         currentTier.className = `value tier-badge tier-${tier}`;
+
+        // Update tier buttons
+        tierButtons.forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.tier) === tier);
+        });
+
+        // Update header badge
+        const headerBadge = document.querySelector('.header .tier-badge');
+        if (headerBadge) {
+            headerBadge.textContent = `Tier ${tier}`;
+            headerBadge.className = `tier-badge tier-${tier}`;
+        }
+
+        // Update tier description
+        if (tierDescription) {
+            const descriptions = {
+                1: 'Non-committing: Memory cannot promote to classical.',
+                2: 'Verified commit: Can promote to classical with accuracy token.',
+                3: 'Persistent: High-confidence verified state.'
+            };
+            tierDescription.textContent = descriptions[tier] || '';
+        }
+    }
+
+    async function setTier(newTier) {
+        try {
+            const response = await fetch('/api/tier', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tier: newTier })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                alert(`Error changing tier: ${data.error}`);
+            } else {
+                updateTier(data.new_tier);
+                // Add system message about tier change
+                const welcomeMsg = chatMessages.querySelector('.welcome-message');
+                if (welcomeMsg) welcomeMsg.remove();
+                appendMessage('assistant', `Tier changed to ${data.new_tier}. ${data.message}`);
+            }
+        } catch (error) {
+            alert(`Error changing tier: ${error.message}`);
+        }
     }
 
     function setLoading(loading) {

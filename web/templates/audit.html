@@ -32,7 +32,11 @@
                         <option value="">All Events</option>
                         <option value="session_started">Session Started</option>
                         <option value="controller_step">Controller Step</option>
+                        <option value="tier_changed">Tier Changed</option>
                         <option value="document_uploaded">Document Uploaded</option>
+                        <option value="memory_deleted">Memory Deleted</option>
+                        <option value="memory_bulk_deleted">Memory Bulk Deleted</option>
+                        <option value="memory_category_cleared">Category Cleared</option>
                         <option value="void_command">Void Command</option>
                         <option value="stopgate_hit">Stopgate Hit</option>
                     </select>
@@ -89,17 +93,25 @@
 
                 <div class="audit-panel memory-panel">
                     <div class="panel-header">
-                        <h3>Memory Items</h3>
-                        <div class="memory-filter">
+                        <h3>Memory Reconciliation</h3>
+                        <div class="memory-controls">
                             <select id="memory-category-filter">
                                 <option value="">All Categories</option>
                                 <option value="working">Working</option>
                                 <option value="quarantine">Quarantine</option>
                                 <option value="classical">Classical</option>
                             </select>
+                            <button class="btn btn-danger btn-small" id="delete-selected-btn" disabled>Delete Selected</button>
+                            <button class="btn btn-danger btn-small" id="clear-category-btn">Clear Category</button>
                         </div>
                     </div>
                     <div class="panel-content">
+                        <div class="memory-actions">
+                            <label class="select-all-label">
+                                <input type="checkbox" id="select-all-memory"> Select All
+                            </label>
+                            <span id="selected-count">0 selected</span>
+                        </div>
                         <div class="memory-items" id="memory-items">
                             <!-- Memory items will be loaded here -->
                         </div>
