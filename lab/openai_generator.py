@@ -16,9 +16,12 @@ class OpenAIGenerator:
     def __init__(self, model: str = "gpt-4o-mini"):
         if OpenAI is None:
             raise RuntimeError("openai package not installed")
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        if not os.environ.get("OPENAI_API_KEY"):
+
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
             raise RuntimeError("Missing OPENAI_API_KEY")
+
+        self.client = OpenAI(api_key=api_key)
         self.model = model
 
     def propose(self, user_input: str, controller_hint: Dict[str, Any]) -> Dict[str, Any]:
@@ -39,9 +42,6 @@ class OpenAIGenerator:
 
         text = resp.choices[0].message.content.strip()
 
-        # IMPORTANT:
-        # - generator may *propose* memory drafts, but here we start with none
-        # - controller still decides everything
         return {
             "response_text": text,
             "proposed_writes": [],
@@ -51,3 +51,18 @@ class OpenAIGenerator:
                 "memory_enabled": controller_hint.get("memory_enabled"),
             },
         }
+
+    def generate(self, user_input: str, controller_hint: Any = None) -> str:
+        """
+        Web UI compatibility shim.
+
+        web/app.py expects:
+            text_gen.generate(prompt) -> str
+
+        We delegate to propose() and return response_text only.
+        """
+        out = self.propose(
+            user_input=user_input,
+            controller_hint=controller_hint or {}
+        )
+        return out.get("response_text", "")
