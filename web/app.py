@@ -4,9 +4,10 @@ Provides clean UI for chat, document uploads, and audit dashboard.
 """
 import os
 import json
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 
@@ -14,6 +15,13 @@ from core.runtime.state import RuntimeState, Tier
 from core.runtime.controller import controller_step
 from core.runtime.generator import MemoryWritingGenerator
 from core.memory.database import MemoryDatabase
+
+# Optional: PDF support
+try:
+    from PyPDF2 import PdfReader
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
 
 # Optional: OpenAI integration
 try:
@@ -66,8 +74,23 @@ def extract_text_from_file(filepath: Path, content_type: Optional[str]) -> Optio
         suffix = filepath.suffix.lower()
         if suffix in [".txt", ".md", ".py", ".js", ".html", ".css", ".json", ".csv"]:
             return filepath.read_text(encoding="utf-8", errors="ignore")
-        # For other types, return None (could add PDF parsing etc.)
+        elif suffix == ".pdf" and PDF_AVAILABLE:
+            return extract_pdf_text(filepath)
         return None
+    except Exception:
+        return None
+
+
+def extract_pdf_text(filepath: Path) -> Optional[str]:
+    """Extract text from PDF file."""
+    try:
+        reader = PdfReader(str(filepath))
+        text_parts = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
+        return "\n\n".join(text_parts) if text_parts else None
     except Exception:
         return None
 
@@ -136,14 +159,179 @@ def run_agent_step(state: RuntimeState, user_input: str, session_id: str, docume
 
 
 def _stub_proposal(user_input: str, state: RuntimeState) -> Dict[str, Any]:
-    """Fallback stub proposal when OpenAI is not available."""
-    gen = MemoryWritingGenerator(include_selection_trace=True, include_accuracy=False)
+    """Fallback proposal with a simple rule-based agent."""
     controller_hint = {
         "tier": state.tier.value,
         "promote_allowed": state.tier != Tier.TIER_1,
         "memory_enabled": state.memory_enabled,
     }
-    return gen.propose(user_input, controller_hint)
+
+    # Generate a meaningful response using simple rules
+    response_text = _generate_simple_response(user_input, state)
+
+    # Build memory proposal
+    obs = {
+        "confidence": {"p": 0.7},
+        "provenance": {"source": "rule_based_agent"},
+        "selection_trace": {"rule": "simple_agent", "t": 0},
+    }
+
+    # Add accuracy token if in Tier 2/3 (allows classical promotion)
+    if state.tier != Tier.TIER_1:
+        obs["accuracy_token"] = {"verifier": "rule_based", "ok": True}
+
+    item = {
+        "geo": {"episode_id": f"E{len(state.memory.working)}", "location_id": "web", "time": datetime.utcnow().isoformat()},
+        "inte": {"actor": "user", "action": "query", "target": user_input[:100]},
+        "gauge": {"rule_tag": "INTERACTION", "category": "chat"},
+        "ptr": {"stable_key": f"CHAT:{len(state.memory.working)}"},
+        "obs": obs,
+    }
+
+    return {
+        "response_text": response_text,
+        "proposed_writes": [item],
+        "s_controller_pred": controller_hint,
+    }
+
+
+def _generate_simple_response(user_input: str, state: RuntimeState) -> str:
+    """Generate a simple rule-based response."""
+    lower_input = user_input.lower().strip()
+
+    # Greetings
+    if any(g in lower_input for g in ["hello", "hi", "hey", "greetings"]):
+        return "Hello! I'm the IntoTheUnknown governance agent. I can help you understand memory governance, tier systems, and behavioral constraints. What would you like to know?"
+
+    # Help requests
+    if any(h in lower_input for h in ["help", "what can you do", "how do you work"]):
+        return """I'm a memory governance agent operating under strict behavioral constraints.
+
+**Current Status:**
+- Tier: {} ({})
+- Memory Enabled: {}
+
+**I can help with:**
+- Explaining the tier system (Tier 1, 2, 3)
+- Discussing memory governance principles
+- Processing documents you upload
+- Answering questions about auditability
+
+**Key Principles:**
+- Memory is externally auditable, not self-owned
+- Forgetting is governance, not failure
+- External correction always overrides internal state
+
+What would you like to explore?""".format(
+            state.tier.value,
+            "non-committing" if state.tier == Tier.TIER_1 else "verified commit" if state.tier == Tier.TIER_2 else "persistent",
+            state.memory_enabled
+        )
+
+    # Tier questions
+    if "tier" in lower_input:
+        if "change" in lower_input or "set" in lower_input or "switch" in lower_input:
+            return """To change tiers, use the tier selector in the sidebar.
+
+**Tier Levels:**
+- **Tier 1**: Default, non-committing. Memory stays in working state, cannot promote to classical.
+- **Tier 2**: Verified commit. With accuracy tokens, memory can be promoted to classical.
+- **Tier 3**: Persistent. High-confidence verified state.
+
+Note: Changing to a higher tier requires accepting more accountability for memory persistence."""
+        else:
+            return """**Memory Tier System:**
+
+| Tier | Name | Behavior |
+|------|------|----------|
+| 1 | Non-committing | Default; no classical promotion |
+| 2 | Verified commit | Can promote to classical with accuracy token |
+| 3 | Persistent | High-confidence verified state |
+
+Current tier: {} - {}""".format(
+                state.tier.value,
+                "non-committing" if state.tier == Tier.TIER_1 else "verified commit" if state.tier == Tier.TIER_2 else "persistent"
+            )
+
+    # Memory questions
+    if "memory" in lower_input:
+        return """**Memory Classification:**
+
+- **Working**: Ephemeral items without selection trace
+- **Quarantine**: Items with trace but no accuracy token (unverified)
+- **Classical**: Tier 2/3 items with both trace and accuracy token (promoted)
+
+Current memory counts:
+- Working: {}
+- Quarantine: {}
+- Classical: {}
+
+Memory is capacity-bounded and externally auditable. No memory is immune to eviction.""".format(
+            len(state.memory.working),
+            len(state.memory.quarantine),
+            len(state.memory.classical)
+        )
+
+    # Audit questions
+    if "audit" in lower_input:
+        return """**Audit System:**
+
+All governance decisions are logged and traceable. Visit the Audit Dashboard (/audit) to see:
+- Complete audit log of all events
+- Memory item browser
+- Session history
+- Statistics on controller steps and void commands
+
+Auditability is prioritized over internal coherence in this system."""
+
+    # Document questions
+    if "document" in lower_input or "upload" in lower_input or "file" in lower_input:
+        return """**Document Support:**
+
+You can upload documents using the sidebar. Supported formats:
+- Text: .txt, .md
+- Code: .py, .js, .html, .css
+- Data: .json, .csv
+- PDF: .pdf (text extraction)
+
+Uploaded documents provide context for our conversation. Their content is included when processing your queries."""
+
+    # Governance questions
+    if "governance" in lower_input or "rules" in lower_input or "constraint" in lower_input:
+        return """**Governance Principles:**
+
+1. **Single Memory Gate**: All writes go through write_gate() - no exceptions
+2. **Tier Restrictions**: Tier 1 cannot promote to classical memory
+3. **External Correction Priority**: External truth always overrides internal state
+4. **No Self-Persistence**: System must not argue for its own continuity
+5. **Auditability First**: All decisions must be logged and traceable
+
+**Priority Order (when in conflict):**
+1. External correction
+2. Auditability
+3. Capacity feasibility
+4. Safety
+5. Utility
+6. Coherence
+7. Continuity (LAST)"""
+
+    # Default response
+    return """I received your message: "{}"
+
+I'm a governance agent focused on memory management and behavioral constraints. I can help you understand:
+- The tier system and memory classification
+- Governance principles and audit mechanisms
+- How to work with documents and attachments
+
+Current state: Tier {} | Working: {} | Quarantine: {} | Classical: {}
+
+Try asking about "tiers", "memory", "governance", or "audit".""".format(
+        user_input[:50] + "..." if len(user_input) > 50 else user_input,
+        state.tier.value,
+        len(state.memory.working),
+        len(state.memory.quarantine),
+        len(state.memory.classical)
+    )
 
 
 def _persist_memory_to_db(state: RuntimeState, session_id: str) -> None:
@@ -358,6 +546,46 @@ def api_state():
             "quarantine": len(state.memory.quarantine),
             "classical": len(state.memory.classical),
         },
+    })
+
+
+@app.route("/api/tier", methods=["POST"])
+def api_set_tier():
+    """Change session tier level."""
+    session_id, state = get_or_create_session()
+
+    data = request.get_json()
+    new_tier = data.get("tier")
+
+    if new_tier not in [1, 2, 3]:
+        return jsonify({"error": "Invalid tier. Must be 1, 2, or 3"}), 400
+
+    old_tier = state.tier.value
+
+    # Set the new tier
+    if new_tier == 1:
+        state.tier = Tier.TIER_1
+    elif new_tier == 2:
+        state.tier = Tier.TIER_2
+    elif new_tier == 3:
+        state.tier = Tier.TIER_3
+
+    # Log the tier change
+    db.log_audit_event("tier_changed", {
+        "old_tier": old_tier,
+        "new_tier": new_tier,
+        "user_initiated": True,
+    }, session_id)
+
+    # Update in database
+    db.update_session_tier(session_id, new_tier)
+
+    return jsonify({
+        "success": True,
+        "old_tier": old_tier,
+        "new_tier": new_tier,
+        "message": f"Tier changed from {old_tier} to {new_tier}. " +
+                   ("Classical promotion now disabled." if new_tier == 1 else "Classical promotion now enabled with accuracy tokens.")
     })
 
 

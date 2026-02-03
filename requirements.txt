@@ -4,5 +4,8 @@
 # Web UI
 flask>=2.0.0
 
+# PDF support
+PyPDF2>=3.0.0
+
 # Lab implementations (optional)
 openai>=1.0.0

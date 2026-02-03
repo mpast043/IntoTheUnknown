@@ -222,6 +222,55 @@ body {
     font-weight: 600;
 }
 
+/* Tier Selector */
+.tier-selector {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.tier-btn {
+    flex: 1;
+    padding: 0.5rem 0.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tier-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.tier-btn.active {
+    color: #fff;
+    border-color: transparent;
+}
+
+.tier-btn[data-tier="1"].active {
+    background: var(--tier-1);
+}
+
+.tier-btn[data-tier="2"].active {
+    background: var(--tier-2);
+    color: #000;
+}
+
+.tier-btn[data-tier="3"].active {
+    background: var(--tier-3);
+}
+
+.tier-description {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
 .upload-area {
     text-align: center;
     padding: 1rem;
