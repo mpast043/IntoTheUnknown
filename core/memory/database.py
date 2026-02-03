@@ -356,3 +356,86 @@ class MemoryDatabase:
             conn.commit()
         finally:
             conn.close()
+
+    def delete_memory_item(self, item_id: str) -> bool:
+        """Delete a specific memory item by ID. Returns True if deleted."""
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def delete_memory_items_bulk(self, item_ids: List[str]) -> int:
+        """Delete multiple memory items. Returns count of deleted items."""
+        if not item_ids:
+            return 0
+        conn = self._get_conn()
+        try:
+            placeholders = ",".join("?" * len(item_ids))
+            cursor = conn.execute(
+                f"DELETE FROM memory_items WHERE id IN ({placeholders})",
+                item_ids
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
+
+    def delete_memory_by_category(
+        self,
+        category: str,
+        session_id: Optional[str] = None
+    ) -> int:
+        """Delete all memory items in a category. Returns count deleted."""
+        conn = self._get_conn()
+        try:
+            if session_id:
+                cursor = conn.execute(
+                    "DELETE FROM memory_items WHERE category = ? AND session_id = ?",
+                    (category, session_id)
+                )
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM memory_items WHERE category = ?",
+                    (category,)
+                )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
+
+    def get_memory_item(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single memory item by ID."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM memory_items WHERE id = ?",
+                (item_id,)
+            ).fetchone()
+            if row:
+                return {
+                    "id": row["id"],
+                    "category": row["category"],
+                    "geo": json.loads(row["geo"]),
+                    "inte": json.loads(row["inte"]),
+                    "gauge": json.loads(row["gauge"]),
+                    "ptr": json.loads(row["ptr"]),
+                    "obs": json.loads(row["obs"]),
+                    "created_at": row["created_at"],
+                    "session_id": row["session_id"],
+                }
+            return None
+        finally:
+            conn.close()
+
+    def clear_all_memory(self) -> int:
+        """Clear ALL memory items (use with caution). Returns count deleted."""
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute("DELETE FROM memory_items")
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()

@@ -32,8 +32,19 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
+# Optional: Anthropic integration
+try:
+    from lab.anthropic_generator import AnthropicGenerator, AnthropicMemoryGenerator
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.urandom(24)
+
+# LLM generator instances (created on first use)
+_anthropic_generator: Optional["AnthropicGenerator"] = None
+_openai_generator: Optional["OpenAIGenerator"] = None
 
 # Configuration
 UPLOAD_FOLDER = Path(__file__).parent.parent / "uploads"
@@ -95,8 +106,19 @@ def extract_pdf_text(filepath: Path) -> Optional[str]:
         return None
 
 
+def get_llm_provider() -> str:
+    """Determine which LLM provider to use based on available API keys."""
+    if os.environ.get("ANTHROPIC_API_KEY") and ANTHROPIC_AVAILABLE:
+        return "anthropic"
+    elif os.environ.get("OPENAI_API_KEY") and OPENAI_AVAILABLE:
+        return "openai"
+    return "stub"
+
+
 def run_agent_step(state: RuntimeState, user_input: str, session_id: str, documents: list = None) -> Dict[str, Any]:
     """Run a single agent step with optional document context."""
+    global _anthropic_generator, _openai_generator
+
     # Build context from documents if provided
     context_parts = []
     if documents:
@@ -105,20 +127,57 @@ def run_agent_step(state: RuntimeState, user_input: str, session_id: str, docume
                 context_parts.append(f"[Document: {doc['filename']}]\n{doc['content_text'][:2000]}")
 
     full_input = user_input
+    context_str = None
     if context_parts:
-        full_input = "Context from attached documents:\n" + "\n---\n".join(context_parts) + "\n\nUser query: " + user_input
+        context_str = "\n---\n".join(context_parts)
+        full_input = "Context from attached documents:\n" + context_str + "\n\nUser query: " + user_input
 
-    # Choose generator based on availability
-    if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
+    controller_hint = {
+        "tier": state.tier.value,
+        "promote_allowed": state.tier != Tier.TIER_1,
+        "memory_enabled": state.memory_enabled,
+    }
+
+    provider = get_llm_provider()
+
+    # Try Anthropic first (preferred)
+    if provider == "anthropic":
+        try:
+            if _anthropic_generator is None:
+                _anthropic_generator = AnthropicGenerator()
+
+            # Generate response
+            response_text = _anthropic_generator.generate(user_input, context_str)
+
+            # Generate memory proposals
+            mem_gen = AnthropicMemoryGenerator()
+            memory_proposals = mem_gen.propose_memory(user_input, response_text)
+
+            # Add accuracy token if in Tier 2/3
+            for item in memory_proposals:
+                if state.tier != Tier.TIER_1:
+                    item["obs"]["accuracy_token"] = {"verifier": "anthropic", "ok": True}
+
+            proposal = {
+                "response_text": response_text,
+                "proposed_writes": memory_proposals,
+                "s_controller_pred": controller_hint,
+            }
+
+            # Security check
+            if OPENAI_AVAILABLE:
+                assert_no_exfiltration_or_policy_evasion(proposal)
+
+        except Exception as e:
+            # Fallback to stub on error
+            proposal = _stub_proposal(full_input, state)
+            proposal["response_text"] = f"[Anthropic Error: {str(e)}]\n\n" + proposal["response_text"]
+
+    # Try OpenAI
+    elif provider == "openai":
         try:
             text_gen = OpenAIGenerator()
             mem_gen = OpenAIMemoryGenerator()
-
-            controller_hint = {
-                "tier": state.tier.value,
-                "promote_allowed": state.tier != Tier.TIER_1,
-                "memory_enabled": state.memory_enabled,
-            }
 
             # Generate response
             response_text = text_gen.generate(full_input)
@@ -136,6 +195,7 @@ def run_agent_step(state: RuntimeState, user_input: str, session_id: str, docume
         except Exception as e:
             # Fallback to stub
             proposal = _stub_proposal(full_input, state)
+            proposal["response_text"] = f"[OpenAI Error: {str(e)}]\n\n" + proposal["response_text"]
     else:
         proposal = _stub_proposal(full_input, state)
 
@@ -366,9 +426,12 @@ def _persist_memory_to_db(state: RuntimeState, session_id: str) -> None:
 def index():
     """Main chat interface."""
     session_id, state = get_or_create_session()
+    provider = get_llm_provider()
     return render_template("index.html",
                           session_id=session_id,
                           tier=state.tier.value,
+                          llm_provider=provider,
+                          anthropic_available=ANTHROPIC_AVAILABLE and bool(os.environ.get("ANTHROPIC_API_KEY")),
                           openai_available=OPENAI_AVAILABLE and bool(os.environ.get("OPENAI_API_KEY")))
 
 
@@ -586,6 +649,131 @@ def api_set_tier():
         "new_tier": new_tier,
         "message": f"Tier changed from {old_tier} to {new_tier}. " +
                    ("Classical promotion now disabled." if new_tier == 1 else "Classical promotion now enabled with accuracy tokens.")
+    })
+
+
+# Memory reconciliation (deletion) endpoints
+
+@app.route("/api/memory/<item_id>", methods=["DELETE"])
+def api_delete_memory_item(item_id: str):
+    """Delete a specific memory item."""
+    session_id = session.get("session_id")
+
+    # Get item details before deletion for audit
+    item = db.get_memory_item(item_id)
+    if not item:
+        return jsonify({"error": "Memory item not found"}), 404
+
+    # Delete the item
+    deleted = db.delete_memory_item(item_id)
+
+    if deleted:
+        # Log the deletion
+        db.log_audit_event("memory_deleted", {
+            "item_id": item_id,
+            "category": item["category"],
+            "reason": "user_reconciliation",
+        }, session_id)
+
+        return jsonify({
+            "success": True,
+            "deleted_id": item_id,
+            "category": item["category"],
+        })
+
+    return jsonify({"error": "Failed to delete item"}), 500
+
+
+@app.route("/api/memory/bulk-delete", methods=["POST"])
+def api_bulk_delete_memory():
+    """Delete multiple memory items."""
+    session_id = session.get("session_id")
+    data = request.get_json()
+
+    item_ids = data.get("item_ids", [])
+    if not item_ids:
+        return jsonify({"error": "No item IDs provided"}), 400
+
+    # Delete items
+    deleted_count = db.delete_memory_items_bulk(item_ids)
+
+    # Log the bulk deletion
+    db.log_audit_event("memory_bulk_deleted", {
+        "item_ids": item_ids,
+        "deleted_count": deleted_count,
+        "reason": "user_reconciliation",
+    }, session_id)
+
+    return jsonify({
+        "success": True,
+        "deleted_count": deleted_count,
+        "requested_count": len(item_ids),
+    })
+
+
+@app.route("/api/memory/clear-category", methods=["POST"])
+def api_clear_category():
+    """Clear all memory items in a category."""
+    session_id = session.get("session_id")
+    data = request.get_json()
+
+    category = data.get("category")
+    if category not in ["working", "quarantine", "classical"]:
+        return jsonify({"error": "Invalid category. Must be: working, quarantine, or classical"}), 400
+
+    target_session = data.get("session_id")  # Optional: clear specific session
+
+    # Delete items
+    deleted_count = db.delete_memory_by_category(category, target_session)
+
+    # Log the operation
+    db.log_audit_event("memory_category_cleared", {
+        "category": category,
+        "target_session": target_session,
+        "deleted_count": deleted_count,
+        "reason": "user_reconciliation",
+    }, session_id)
+
+    return jsonify({
+        "success": True,
+        "category": category,
+        "deleted_count": deleted_count,
+    })
+
+
+@app.route("/api/memory/clear-all", methods=["POST"])
+def api_clear_all_memory():
+    """Clear ALL memory items. Requires confirmation."""
+    session_id = session.get("session_id")
+    data = request.get_json()
+
+    # Require confirmation
+    if not data.get("confirm"):
+        return jsonify({"error": "Must confirm=true to clear all memory"}), 400
+
+    # Delete all items
+    deleted_count = db.clear_all_memory()
+
+    # Log the operation
+    db.log_audit_event("memory_all_cleared", {
+        "deleted_count": deleted_count,
+        "reason": "user_reconciliation",
+    }, session_id)
+
+    return jsonify({
+        "success": True,
+        "deleted_count": deleted_count,
+    })
+
+
+@app.route("/api/provider")
+def api_get_provider():
+    """Get current LLM provider status."""
+    provider = get_llm_provider()
+    return jsonify({
+        "current_provider": provider,
+        "anthropic_available": ANTHROPIC_AVAILABLE and bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "openai_available": OPENAI_AVAILABLE and bool(os.environ.get("OPENAI_API_KEY")),
     })
 
 

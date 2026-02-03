@@ -20,8 +20,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const memoryItems = document.getElementById('memory-items');
     const sessionsBody = document.getElementById('sessions-body');
 
+    // Memory reconciliation elements
+    const selectAllCheckbox = document.getElementById('select-all-memory');
+    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+    const clearCategoryBtn = document.getElementById('clear-category-btn');
+    const selectedCount = document.getElementById('selected-count');
+
     let currentPage = 0;
     const pageSize = 20;
+    let selectedMemoryIds = new Set();
 
     // Initial load
     loadSessions();
@@ -33,7 +40,11 @@ document.addEventListener('DOMContentLoaded', function() {
     refreshBtn.addEventListener('click', refreshAll);
     sessionFilter.addEventListener('change', refreshAll);
     eventFilter.addEventListener('change', () => { currentPage = 0; loadAuditLog(); });
-    memoryCategoryFilter.addEventListener('change', loadMemoryItems);
+    memoryCategoryFilter.addEventListener('change', () => {
+        selectedMemoryIds.clear();
+        updateSelectedCount();
+        loadMemoryItems();
+    });
 
     prevPageBtn.addEventListener('click', () => {
         if (currentPage > 0) {
@@ -47,8 +58,104 @@ document.addEventListener('DOMContentLoaded', function() {
         loadAuditLog();
     });
 
+    // Memory reconciliation listeners
+    selectAllCheckbox.addEventListener('change', function() {
+        const checkboxes = memoryItems.querySelectorAll('.memory-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = this.checked;
+            if (this.checked) {
+                selectedMemoryIds.add(cb.dataset.id);
+            } else {
+                selectedMemoryIds.delete(cb.dataset.id);
+            }
+        });
+        updateSelectedCount();
+    });
+
+    deleteSelectedBtn.addEventListener('click', async function() {
+        if (selectedMemoryIds.size === 0) return;
+
+        if (!confirm(`Delete ${selectedMemoryIds.size} selected memory items? This action is logged but cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/memory/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_ids: Array.from(selectedMemoryIds) })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(`Successfully deleted ${data.deleted_count} items.`);
+                selectedMemoryIds.clear();
+                selectAllCheckbox.checked = false;
+                updateSelectedCount();
+                loadMemoryItems();
+                loadAuditLog();
+                loadStats();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        } catch (error) {
+            alert(`Error deleting items: ${error.message}`);
+        }
+    });
+
+    clearCategoryBtn.addEventListener('click', async function() {
+        const category = memoryCategoryFilter.value;
+        if (!category) {
+            alert('Please select a category to clear.');
+            return;
+        }
+
+        const sessionId = sessionFilter.value;
+        const scope = sessionId ? 'this session' : 'ALL sessions';
+
+        if (!confirm(`Clear ALL ${category} memory items from ${scope}? This action is logged but cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const body = { category };
+            if (sessionId) body.session_id = sessionId;
+
+            const response = await fetch('/api/memory/clear-category', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(`Successfully cleared ${data.deleted_count} ${category} items.`);
+                selectedMemoryIds.clear();
+                selectAllCheckbox.checked = false;
+                updateSelectedCount();
+                loadMemoryItems();
+                loadAuditLog();
+                loadStats();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        } catch (error) {
+            alert(`Error clearing category: ${error.message}`);
+        }
+    });
+
+    function updateSelectedCount() {
+        selectedCount.textContent = `${selectedMemoryIds.size} selected`;
+        deleteSelectedBtn.disabled = selectedMemoryIds.size === 0;
+    }
+
     function refreshAll() {
         currentPage = 0;
+        selectedMemoryIds.clear();
+        selectAllCheckbox.checked = false;
+        updateSelectedCount();
         loadAuditLog();
         loadStats();
         loadMemoryItems();
@@ -123,7 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 tr.innerHTML = `
                     <td>${formatTime(log.timestamp)}</td>
-                    <td><span class="event-type-${log.event_type}">${log.event_type}</span></td>
+                    <td><span class="event-type event-type-${log.event_type}">${log.event_type}</span></td>
                     <td>${log.session_id ? log.session_id.substring(0, 8) + '...' : '-'}</td>
                     <td title="${escapeHtml(JSON.stringify(log.details))}">${escapeHtml(details)}</td>
                 `;
@@ -175,23 +282,69 @@ document.addEventListener('DOMContentLoaded', function() {
             memoryItems.innerHTML = '';
 
             if (items.length === 0) {
-                memoryItems.innerHTML = '<p class="loading">No memory items found</p>';
+                memoryItems.innerHTML = '<p class="no-items">No memory items found</p>';
                 return;
             }
 
             items.forEach(item => {
                 const div = document.createElement('div');
                 div.className = `memory-item ${item.category}`;
+                div.dataset.id = item.id;
 
+                const isSelected = selectedMemoryIds.has(item.id);
                 const obsPreview = JSON.stringify(item.obs, null, 2).substring(0, 150);
+                const intePreview = item.inte?.target || '';
 
                 div.innerHTML = `
                     <div class="memory-item-header">
+                        <label class="memory-select">
+                            <input type="checkbox" class="memory-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''}>
+                        </label>
                         <span class="memory-category">${item.category}</span>
                         <span class="memory-time">${formatTime(item.created_at)}</span>
+                        <button class="btn-icon delete-single" data-id="${item.id}" title="Delete this item">×</button>
                     </div>
-                    <div class="memory-item-content">${escapeHtml(obsPreview)}...</div>
+                    <div class="memory-item-content">
+                        ${intePreview ? `<div class="memory-target">${escapeHtml(intePreview.substring(0, 100))}</div>` : ''}
+                        <div class="memory-obs">${escapeHtml(obsPreview)}...</div>
+                    </div>
                 `;
+
+                // Add event listeners
+                const checkbox = div.querySelector('.memory-checkbox');
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        selectedMemoryIds.add(item.id);
+                    } else {
+                        selectedMemoryIds.delete(item.id);
+                    }
+                    updateSelectedCount();
+                });
+
+                const deleteBtn = div.querySelector('.delete-single');
+                deleteBtn.addEventListener('click', async function(e) {
+                    e.stopPropagation();
+                    if (!confirm('Delete this memory item?')) return;
+
+                    try {
+                        const response = await fetch(`/api/memory/${item.id}`, {
+                            method: 'DELETE'
+                        });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            selectedMemoryIds.delete(item.id);
+                            updateSelectedCount();
+                            loadMemoryItems();
+                            loadAuditLog();
+                        } else {
+                            alert(`Error: ${data.error}`);
+                        }
+                    } catch (error) {
+                        alert(`Error: ${error.message}`);
+                    }
+                });
+
                 memoryItems.appendChild(div);
             });
 
@@ -214,9 +367,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const parts = [];
 
         if (details.tier !== undefined) parts.push(`tier=${details.tier}`);
+        if (details.old_tier !== undefined && details.new_tier !== undefined) {
+            parts.push(`${details.old_tier} → ${details.new_tier}`);
+        }
         if (details.user_input) parts.push(`input="${details.user_input.substring(0, 30)}..."`);
         if (details.reason) parts.push(`reason="${details.reason}"`);
         if (details.filename) parts.push(`file="${details.filename}"`);
+        if (details.deleted_count !== undefined) parts.push(`deleted=${details.deleted_count}`);
+        if (details.category) parts.push(`category=${details.category}`);
         if (details.decision?.stopgates?.length) parts.push(`stopgates=${details.decision.stopgates.length}`);
 
         return parts.length > 0 ? parts.join(', ') : JSON.stringify(details).substring(0, 50) + '...';

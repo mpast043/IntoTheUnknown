@@ -16,7 +16,9 @@
             <div class="header-right">
                 <div class="status-indicator">
                     <span class="tier-badge tier-{{ tier }}">Tier {{ tier }}</span>
-                    {% if openai_available %}
+                    {% if llm_provider == "anthropic" %}
+                    <span class="model-badge active">Claude Active</span>
+                    {% elif llm_provider == "openai" %}
                     <span class="model-badge active">OpenAI Active</span>
                     {% else %}
                     <span class="model-badge">Stub Mode</span>
