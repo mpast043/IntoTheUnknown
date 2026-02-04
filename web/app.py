@@ -19,7 +19,7 @@ from core.memory.database import MemoryDatabase
 try:
     from PyPDF2 import PdfReader
     PDF_AVAILABLE = True
-except ImportError:
+except Exception:
     PDF_AVAILABLE = False
 
 # Optional: Ollama (FREE local)
@@ -42,8 +42,9 @@ try:
     from lab.openai_memory_generator import OpenAIMemoryGenerator
     from lab.audit_guards import assert_no_exfiltration_or_policy_evasion
     OPENAI_AVAILABLE = True
-except ImportError:
+except Exception as e:
     OPENAI_AVAILABLE = False
+    print(f"OPENAI IMPORT FAILED: {type(e).__name__}: {e}", flush=True)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.urandom(24)
@@ -89,7 +90,6 @@ def get_or_create_session(agent_id: Optional[str] = None) -> tuple[str, RuntimeS
     if state_key and state_key in session_states:
         return session_id, session_states[state_key], memory_pool_id
 
-    # Create new session
     session_id = db.create_session()
     state = RuntimeState()
     state_key = f"{session_id}:{memory_pool_id}"
@@ -259,10 +259,8 @@ def run_agent_step(state: RuntimeState, user_input: str, session_id: str, agent_
             "memory_report": {},
         }
 
-    # Run controller step
     state, out = controller_step(state, user_input, proposal)
 
-    # Log to database
     db.log_audit_event("controller_step", {
         "user_input": user_input[:500],
         "agent_id": agent_id,
@@ -271,7 +269,6 @@ def run_agent_step(state: RuntimeState, user_input: str, session_id: str, agent_
         "memory_report": out.get("memory_report", {}),
     }, session_id)
 
-    # Persist memory items
     _persist_memory_to_db(state, session_id)
 
     # Update session tier
@@ -300,8 +297,6 @@ def _persist_memory_to_db(state: RuntimeState, session_id: str) -> None:
         "classical": len(state.memory.classical),
     })
 
-
-# Routes
 
 @app.route("/")
 def index():
@@ -395,7 +390,6 @@ def upload_document():
 
 @app.route("/documents")
 def list_documents():
-    """List uploaded documents for current session."""
     session_id = session.get("session_id")
     if not session_id:
         return jsonify([])
@@ -411,7 +405,6 @@ def list_documents():
 
 @app.route("/new-session", methods=["POST"])
 def new_session():
-    """Start a new session."""
     old_session_id = session.get("session_id")
     if old_session_id:
         db.end_session(old_session_id)
@@ -515,13 +508,11 @@ def api_switch_agent(agent_id: str):
 
 @app.route("/audit")
 def audit_dashboard():
-    """Audit dashboard."""
     return render_template("audit.html")
 
 
 @app.route("/api/audit/logs")
 def api_audit_logs():
-    """API endpoint for audit logs."""
     session_filter = request.args.get("session_id")
     event_type = request.args.get("event_type")
     limit = min(int(request.args.get("limit", 100)), 500)
@@ -533,7 +524,6 @@ def api_audit_logs():
 
 @app.route("/api/audit/stats")
 def api_audit_stats():
-    """API endpoint for audit statistics."""
     session_filter = request.args.get("session_id")
     stats = db.get_audit_stats(session_filter)
     return jsonify(stats)
@@ -541,7 +531,6 @@ def api_audit_stats():
 
 @app.route("/api/audit/memory")
 def api_audit_memory():
-    """API endpoint for memory items."""
     session_filter = request.args.get("session_id")
     category = request.args.get("category")
     limit = min(int(request.args.get("limit", 100)), 500)
@@ -552,14 +541,12 @@ def api_audit_memory():
 
 @app.route("/api/audit/sessions")
 def api_audit_sessions():
-    """API endpoint for session list."""
     sessions = db.get_sessions()
     return jsonify(sessions)
 
 
 @app.route("/api/memory/counts")
 def api_memory_counts():
-    """Get memory counts for current session."""
     session_id = session.get("session_id")
     counts = db.get_memory_counts(session_id)
     return jsonify(counts)
@@ -651,7 +638,6 @@ def api_get_provider():
 
 @app.route("/api/memory/<item_id>", methods=["DELETE"])
 def api_delete_memory_item(item_id: str):
-    """Delete a specific memory item."""
     session_id = session.get("session_id")
 
     item = db.get_memory_item(item_id)
@@ -678,7 +664,6 @@ def api_delete_memory_item(item_id: str):
 
 @app.route("/api/memory/bulk-delete", methods=["POST"])
 def api_bulk_delete_memory():
-    """Delete multiple memory items."""
     session_id = session.get("session_id")
     data = request.get_json()
 
@@ -703,7 +688,6 @@ def api_bulk_delete_memory():
 
 @app.route("/api/memory/clear-category", methods=["POST"])
 def api_clear_category():
-    """Clear all memory items in a category."""
     session_id = session.get("session_id")
     data = request.get_json()
 
