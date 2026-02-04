@@ -47,7 +47,9 @@ IntoTheUnknown/
 │       └── js/
 │           ├── chat.js          # Chat functionality
 │           └── audit.js         # Audit dashboard functionality
-├── lab/                          # Experimental implementations
+├── lab/                          # LLM integrations & experiments
+│   ├── ollama_generator.py      # Ollama (FREE local inference)
+│   ├── groq_generator.py        # Groq (affordable cloud ~$0.05-0.27/1M tokens)
 │   ├── openai_generator.py      # OpenAI text generation
 │   ├── openai_memory_generator.py # OpenAI memory proposals
 │   ├── verifier_openai.py       # OpenAI-based memory verifier
@@ -181,9 +183,20 @@ python -m lab.runner_tier2_quarantine
 **Web UI**: Requires `flask` package
 - Install with: `pip install flask`
 
-**Lab Implementations**: Optional `openai` package
-- Graceful fallback if missing
-- Requires `OPENAI_API_KEY` environment variable
+**PDF Support**: Optional `PyPDF2` package
+- Install with: `pip install PyPDF2`
+
+**LLM Providers** (choose one or more):
+
+| Provider | Package | Cost | Setup |
+|----------|---------|------|-------|
+| Ollama | `requests` | FREE (local) | Install from https://ollama.ai, run `ollama pull llama3.2` |
+| Groq | `groq` | ~$0.05-0.27/1M tokens | Set `GROQ_API_KEY` from https://console.groq.com |
+| OpenAI | `openai` | Higher | Set `OPENAI_API_KEY` |
+
+Auto-detection priority: Ollama (if running) > Groq (if API key) > OpenAI (if API key)
+
+Override with: `export LLM_PROVIDER=groq`
 
 ---
 
@@ -199,9 +212,23 @@ python -m lab.runner_tier2_quarantine
 ### Document Attachments
 
 The agent can process uploaded documents for context:
-- Supported formats: txt, md, json, csv, py, js, html, css
+- Supported formats: txt, md, json, csv, py, js, html, css, **pdf**
+- PDF text extraction with PyPDF2
 - Documents are extracted and included in agent context
 - Stored in `uploads/` directory, organized by session
+
+### Multi-Agent Support
+
+Create multiple agents with shared or isolated memory pools:
+
+- **Shared Memory**: Default mode - all agents access the same memory pool
+- **Isolated Memory**: Each agent has private memory, no cross-agent access
+
+API endpoints:
+- `POST /api/agents` - Create agent with `{id, isolated: bool}`
+- `GET /api/agents` - List all agents
+- `POST /api/agents/<id>/switch` - Switch to agent
+- `DELETE /api/agents/<id>` - Delete agent
 
 ### Audit Dashboard (`/audit`)
 
@@ -227,10 +254,19 @@ SQLite database (`data/memory.db`) stores:
 | `/upload` | POST | Upload document attachment |
 | `/documents` | GET | List session documents |
 | `/api/state` | GET | Current session state |
+| `/api/tier` | POST | Change tier level |
+| `/api/provider` | GET | Current LLM provider status |
+| `/api/agents` | GET/POST | List/create agents |
+| `/api/agents/<id>/switch` | POST | Switch to agent |
+| `/api/agents/<id>` | DELETE | Delete agent |
 | `/api/audit/logs` | GET | Query audit log |
 | `/api/audit/stats` | GET | Audit statistics |
 | `/api/audit/memory` | GET | Query memory items |
 | `/api/audit/sessions` | GET | List all sessions |
+| `/api/memory/<id>` | DELETE | Delete single memory item |
+| `/api/memory/bulk-delete` | POST | Delete multiple memory items |
+| `/api/memory/clear-category` | POST | Clear memory category |
+| `/api/memory/clear-all` | POST | Clear all memory (requires confirm) |
 
 ---
 

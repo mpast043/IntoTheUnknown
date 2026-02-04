@@ -16,12 +16,14 @@
             <div class="header-right">
                 <div class="status-indicator">
                     <span class="tier-badge tier-{{ tier }}">Tier {{ tier }}</span>
-                    {% if llm_provider == "anthropic" %}
-                    <span class="model-badge active">Claude Active</span>
+                    {% if llm_provider == "ollama" %}
+                    <span class="model-badge active">Ollama (Local)</span>
+                    {% elif llm_provider == "groq" %}
+                    <span class="model-badge active">Groq</span>
                     {% elif llm_provider == "openai" %}
-                    <span class="model-badge active">OpenAI Active</span>
+                    <span class="model-badge active">OpenAI</span>
                     {% else %}
-                    <span class="model-badge">Stub Mode</span>
+                    <span class="model-badge warning">No LLM</span>
                     {% endif %}
                 </div>
                 <a href="{{ url_for('audit_dashboard') }}" class="nav-link">Audit Dashboard</a>
@@ -67,6 +69,32 @@
                         Persistent: High-confidence verified state.
                         {% endif %}
                     </p>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Agent</h3>
+                    <div class="agent-selector">
+                        <select id="agent-select">
+                            {% for agent in agents %}
+                            <option value="{{ agent }}" {% if agent == agent_id %}selected{% endif %}>{{ agent }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-small" id="new-agent-btn" title="Create new agent">+</button>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Memory Pool:</span>
+                        <span class="value" id="memory-pool">{{ memory_pool }}</span>
+                    </div>
+                    <div id="new-agent-form" style="display:none; margin-top: 10px;">
+                        <input type="text" id="new-agent-id" placeholder="Agent ID" class="input-small">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="agent-isolated"> Isolated Memory
+                        </label>
+                        <div class="btn-group">
+                            <button class="btn btn-small btn-primary" id="create-agent-btn">Create</button>
+                            <button class="btn btn-small" id="cancel-agent-btn">Cancel</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="sidebar-section">

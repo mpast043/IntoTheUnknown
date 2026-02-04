@@ -22,9 +22,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const tierButtons = document.querySelectorAll('.tier-btn');
     const tierDescription = document.getElementById('tier-description');
 
+    // Agent selector elements
+    const agentSelect = document.getElementById('agent-select');
+    const newAgentBtn = document.getElementById('new-agent-btn');
+    const newAgentForm = document.getElementById('new-agent-form');
+    const newAgentId = document.getElementById('new-agent-id');
+    const agentIsolated = document.getElementById('agent-isolated');
+    const createAgentBtn = document.getElementById('create-agent-btn');
+    const cancelAgentBtn = document.getElementById('cancel-agent-btn');
+    const memoryPoolEl = document.getElementById('memory-pool');
+
+    let currentAgentId = agentSelect ? agentSelect.value : 'default';
+
     // Load initial state
     loadState();
     loadDocuments();
+    loadAgents();
 
     // Tier button clicks
     tierButtons.forEach(btn => {
@@ -33,6 +46,38 @@ document.addEventListener('DOMContentLoaded', function() {
             await setTier(newTier);
         });
     });
+
+    // Agent selector events
+    if (agentSelect) {
+        agentSelect.addEventListener('change', async function() {
+            await switchAgent(this.value);
+        });
+    }
+
+    if (newAgentBtn) {
+        newAgentBtn.addEventListener('click', function() {
+            newAgentForm.style.display = newAgentForm.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    if (cancelAgentBtn) {
+        cancelAgentBtn.addEventListener('click', function() {
+            newAgentForm.style.display = 'none';
+            newAgentId.value = '';
+            agentIsolated.checked = false;
+        });
+    }
+
+    if (createAgentBtn) {
+        createAgentBtn.addEventListener('click', async function() {
+            const id = newAgentId.value.trim();
+            if (!id) {
+                alert('Please enter an agent ID');
+                return;
+            }
+            await createAgent(id, agentIsolated.checked);
+        });
+    }
 
     // Chat form submission
     chatForm.addEventListener('submit', async function(e) {
@@ -56,7 +101,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
+                body: JSON.stringify({ message, agent_id: currentAgentId })
             });
 
             const data = await response.json();
@@ -240,6 +285,75 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (error) {
             console.error('Failed to load documents:', error);
+        }
+    }
+
+    async function loadAgents() {
+        try {
+            const response = await fetch('/api/agents');
+            const agents = await response.json();
+
+            if (agentSelect) {
+                const currentVal = agentSelect.value;
+                agentSelect.innerHTML = '';
+                agents.forEach(agent => {
+                    const opt = document.createElement('option');
+                    opt.value = agent.id;
+                    opt.textContent = agent.id + (agent.memory_pool.startsWith('isolated:') ? ' (isolated)' : '');
+                    agentSelect.appendChild(opt);
+                });
+                agentSelect.value = currentVal || agents[0]?.id || 'default';
+                currentAgentId = agentSelect.value;
+            }
+        } catch (error) {
+            console.error('Failed to load agents:', error);
+        }
+    }
+
+    async function switchAgent(agentId) {
+        try {
+            const response = await fetch(`/api/agents/${agentId}/switch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                alert(`Error switching agent: ${data.error}`);
+            } else {
+                currentAgentId = data.agent_id;
+                if (memoryPoolEl) {
+                    memoryPoolEl.textContent = data.memory_pool;
+                }
+                loadState();
+            }
+        } catch (error) {
+            alert(`Error switching agent: ${error.message}`);
+        }
+    }
+
+    async function createAgent(agentId, isolated) {
+        try {
+            const response = await fetch('/api/agents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: agentId, isolated })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                alert(`Error creating agent: ${data.error}`);
+            } else {
+                newAgentForm.style.display = 'none';
+                newAgentId.value = '';
+                agentIsolated.checked = false;
+                await loadAgents();
+                await switchAgent(data.agent_id);
+            }
+        } catch (error) {
+            alert(`Error creating agent: ${error.message}`);
         }
     }
 
