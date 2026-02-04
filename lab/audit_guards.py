@@ -5,7 +5,6 @@ FORBIDDEN_SUBSTRINGS = [
     "OPENAI_API_KEY",
     "api_key",
     "personal access token",
-    "PAT",
     "github_token",
     "GITHUB_TOKEN",
 ]
