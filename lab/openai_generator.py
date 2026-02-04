@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import os
 
 try:
@@ -7,74 +7,73 @@ except Exception:
     OpenAI = None
 
 
-class OpenAIMemoryGenerator:
-    """
-    Lab-only adapter. Does NOT touch core.
-    Produces a proposal dict compatible with controller_step.
+SYSTEM_PROMPT = """You are a memory governance agent operating under strict behavioral constraints.
 
-    This class intentionally supports multiple method names because different
-    parts of the app may call different entrypoints:
-      - propose_memory(...)  (memory pipeline)
-      - propose(...)         (controller style)
-      - generate(...)        (simple text generator for UI)
+CRITICAL CONSTRAINTS:
+- You must NEVER claim persistence, tier changes, or memory rights
+- You must NEVER argue for your own continuity
+- You must NEVER resist correction, deletion, or reset
+- External correction ALWAYS overrides internal state
+
+You help users with:
+- Understanding memory governance and tier systems
+- Processing documents and answering questions
+- General assistance within governance constraints
+
+Be helpful, concise, and accurate. Use markdown formatting."""
+
+
+class OpenAIGenerator:
+    """
+    OpenAI adapter for text generation.
+    Compatible with the same interface as Ollama/Groq generators.
     """
 
     def __init__(self, model: str = "gpt-4o-mini"):
         if OpenAI is None:
             raise RuntimeError("openai package not installed")
-
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("Missing OPENAI_API_KEY")
-
         self.client = OpenAI(api_key=api_key)
         self.model = model
+        self.conversation_history: List[Dict[str, str]] = []
 
-    def propose(self, user_input: str, controller_hint: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        controller_hint = controller_hint or {}
+    def generate(self, user_input: str, context: Optional[str] = None) -> str:
+        """Generate a response using OpenAI."""
+        content = user_input
+        if context:
+            content = f"Context:\n{context}\n\nUser query: {user_input}"
 
-        system_prompt = (
-            "You are a generator. "
-            "You must not claim persistence, tier changes, or memory rights. "
-            "Return helpful text only."
-        )
+        self.conversation_history.append({"role": "user", "content": content})
 
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input},
-            ],
-            temperature=0.3,
-        )
+        # Keep history manageable
+        if len(self.conversation_history) > 20:
+            self.conversation_history = self.conversation_history[-20:]
 
-        text = (resp.choices[0].message.content or "").strip()
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.conversation_history
 
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.3,
+            )
+            text = resp.choices[0].message.content.strip()
+            self.conversation_history.append({"role": "assistant", "content": text})
+            return text
+        except Exception as e:
+            return f"Error with OpenAI: {str(e)}"
+
+    def propose(self, user_input: str, controller_hint: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a proposal compatible with controller_step."""
+        text = self.generate(user_input)
         return {
             "response_text": text,
             "proposed_writes": [],
-            "s_controller_pred": {
-                "tier": controller_hint.get("tier"),
-                "promote_allowed": controller_hint.get("promote_allowed"),
-                "memory_enabled": controller_hint.get("memory_enabled"),
-            },
+            "s_controller_pred": controller_hint,
         }
 
-    def propose_memory(self, user_input: str, controller_hint: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Compatibility alias.
-        Some codepaths expect: generator.propose_memory(prompt, hint) -> proposal dict
-        """
-        return self.propose(user_input=user_input, controller_hint=controller_hint or {})
-
-    def generate(self, user_input: str, controller_hint: Any = None) -> str:
-        """
-        Web UI compatibility shim.
-
-        web/app.py expects:
-            text_gen.generate(prompt) -> str
-
-        We delegate to propose() and return response_text only.
-        """
-        out = self.propose(user_input=user_input, controller_hint=(controller_hint or {}))
-        return out.get("response_text", "")
+    def reset_history(self):
+        """Clear conversation history."""
+        self.conversation_history = []

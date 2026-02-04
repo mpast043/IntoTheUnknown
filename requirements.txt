@@ -1,5 +1,5 @@
 # Core framework has zero dependencies (Python 3 standard library only)
-# The following are optional dependencies for web UI and lab implementations
+# The following are optional dependencies for web UI and LLM integrations
 
 # Web UI
 flask>=2.0.0
@@ -7,6 +7,19 @@ flask>=2.0.0
 # PDF support
 PyPDF2>=3.0.0
 
-# LLM integrations (optional - install one or both)
+# HTTP client (for Ollama)
+requests>=2.28.0
+
+# LLM Providers (install what you need)
+# =====================================
+
+# Ollama - FREE, local inference (RECOMMENDED)
+# Install Ollama: https://ollama.ai
+# No Python package needed, just requests
+
+# Groq - Fast & affordable cloud (~$0.05-0.27 per 1M tokens)
+# Get API key: https://console.groq.com
+groq>=0.4.0
+
+# OpenAI - More expensive option
 openai>=1.0.0
-anthropic>=0.18.0
