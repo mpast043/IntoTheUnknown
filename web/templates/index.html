@@ -116,6 +116,37 @@
                 </div>
 
                 <div class="sidebar-section">
+                    <h3>Add Memory</h3>
+                    <div id="memory-insert-form">
+                        <textarea id="memory-content" placeholder="Memory content..." rows="2" class="input-small" style="width:100%;resize:vertical;margin-bottom:0.5rem;padding:0.5rem;border:1px solid var(--border-color);border-radius:0.375rem;background:var(--bg-primary);color:var(--text-primary);font-family:inherit;font-size:0.875rem;"></textarea>
+                        <input type="text" id="memory-tags" placeholder="Tags (comma-separated)" class="input-small" style="width:100%;margin-bottom:0.5rem;">
+                        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;">
+                            <select id="memory-category" style="flex:1;padding:0.25rem;border:1px solid var(--border-color);border-radius:0.375rem;background:var(--bg-tertiary);color:var(--text-primary);font-size:0.75rem;">
+                                <option value="working">Working</option>
+                                <option value="quarantine">Quarantine</option>
+                                <option value="classical">Classical</option>
+                            </select>
+                            <label class="checkbox-label" style="margin:0;font-size:0.7rem;">
+                                <input type="checkbox" id="memory-pinned"> Pin
+                            </label>
+                        </div>
+                        <button class="btn btn-small btn-primary" id="insert-memory-btn" style="width:100%;">Save Memory</button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>All Memory
+                        <span style="font-size:0.7rem;color:var(--text-muted);text-transform:none;font-weight:400;" id="total-memory-label"></span>
+                    </h3>
+                    <div id="tag-filter" style="margin-bottom:0.5rem;">
+                        <select id="tag-select" style="width:100%;padding:0.25rem;border:1px solid var(--border-color);border-radius:0.375rem;background:var(--bg-tertiary);color:var(--text-primary);font-size:0.75rem;">
+                            <option value="">All tags</option>
+                        </select>
+                    </div>
+                    <div id="history-list" style="max-height:200px;overflow-y:auto;"></div>
+                </div>
+
+                <div class="sidebar-section">
                     <h3>Documents</h3>
                     <div class="upload-area" id="upload-area">
                         <input type="file" id="file-input" accept=".txt,.pdf,.md,.json,.csv,.py,.js,.html,.css" hidden>

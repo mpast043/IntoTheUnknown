@@ -67,13 +67,36 @@ Upload documents for context:
 - Text files (txt, md, json, csv, py, js, html, css)
 - PDF files (with text extraction)
 
+### Manual Memory & Tags
+
+- Insert memories manually via the sidebar with custom tags
+- Tag any memory for topic focus (e.g., "architecture", "preferences")
+- Pin important memories to persist across sessions
+- Filter memory history by tag
+- All memory is accessible historically across sessions
+
 ### Audit Dashboard
 
 External auditability interface at `/audit`:
 - View all governance events
-- Browse memory items by category
+- Browse memory items by category (with tag filtering)
 - Track sessions and tier changes
 - **Memory Reconciliation**: Delete or clear memory items
+
+## Database
+
+By default, the system uses **SQLite** (zero configuration). For production use, **PostgreSQL** is recommended:
+
+```bash
+# PostgreSQL (recommended for production)
+export DATABASE_URL=postgresql://user:password@localhost/intotheunknown
+pip install psycopg2-binary
+
+# SQLite (default, no config needed)
+# Data stored in data/memory.db
+```
+
+PostgreSQL provides native JSONB support, GIN indexes on tags for fast filtering, and better concurrency for multi-user setups.
 
 ## LLM Provider Configuration
 
