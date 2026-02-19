@@ -248,8 +248,8 @@ def run_agent_step(state: RuntimeState, user_input: str, session_id: str, agent_
             "s_controller_pred": controller_hint,
         }
 
-        # Security check
-        if OPENAI_AVAILABLE:
+        # Security check (only for OpenAI provider)
+        if provider == "openai" and OPENAI_AVAILABLE:
             assert_no_exfiltration_or_policy_evasion(proposal)
 
     except Exception as e:
