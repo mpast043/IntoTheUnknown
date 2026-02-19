@@ -541,12 +541,26 @@ def api_audit_stats():
 
 @app.route("/api/audit/memory")
 def api_audit_memory():
-    """API endpoint for memory items."""
+    """API endpoint for memory items. Supports cross-session and tag filtering."""
     session_filter = request.args.get("session_id")
     category = request.args.get("category")
     limit = min(int(request.args.get("limit", 100)), 500)
+    tag_filter = request.args.get("tags")
+    source_filter = request.args.get("source")
+    include_all = request.args.get("all_sessions", "false").lower() == "true"
+    pinned_only = request.args.get("pinned", "false").lower() == "true"
 
-    items = db.get_memory_items(category, session_filter, limit)
+    tags = [t.strip() for t in tag_filter.split(",") if t.strip()] if tag_filter else None
+
+    items = db.get_memory_items(
+        category=category,
+        session_id=session_filter,
+        limit=limit,
+        tags=tags,
+        source=source_filter,
+        pinned_only=pinned_only,
+        include_all_sessions=include_all,
+    )
     return jsonify(items)
 
 
@@ -569,6 +583,9 @@ def api_memory_counts():
 def api_state():
     """Get current session state."""
     session_id, state, memory_pool = get_or_create_session()
+    # Show total memory counts from database (across all sessions)
+    total_counts = db.get_memory_counts(include_all=True)
+    session_counts = db.get_memory_counts(session_id)
     return jsonify({
         "session_id": session_id,
         "tier": state.tier.value,
@@ -577,11 +594,13 @@ def api_state():
         "entanglement_divergence": state.entanglement.divergence_ema,
         "agent_id": session.get("agent_id", "default"),
         "memory_pool": memory_pool,
+        "db_backend": db.backend,
         "memory_counts": {
-            "working": len(state.memory.working),
-            "quarantine": len(state.memory.quarantine),
-            "classical": len(state.memory.classical),
+            "working": session_counts.get("working", 0),
+            "quarantine": session_counts.get("quarantine", 0),
+            "classical": session_counts.get("classical", 0),
         },
+        "total_memory_counts": total_counts,
     })
 
 
@@ -748,6 +767,115 @@ def api_clear_all_memory():
     return jsonify({
         "success": True,
         "deleted_count": deleted_count,
+    })
+
+
+# Manual memory insertion and tag management
+
+@app.route("/api/memory/insert", methods=["POST"])
+def api_insert_memory():
+    """Manually insert a memory item with content and tags."""
+    session_id = session.get("session_id")
+    data = request.get_json()
+
+    content = data.get("content", "").strip()
+    if not content:
+        return jsonify({"error": "Content is required"}), 400
+
+    category = data.get("category", "working")
+    if category not in ["working", "quarantine", "classical"]:
+        return jsonify({"error": "Invalid category"}), 400
+
+    tags = data.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    pinned = data.get("pinned", False)
+
+    item_id = db.insert_manual_memory(
+        content=content,
+        category=category,
+        tags=tags,
+        session_id=session_id,
+        pinned=pinned,
+    )
+
+    db.log_audit_event("memory_manual_insert", {
+        "item_id": item_id,
+        "content": content[:200],
+        "category": category,
+        "tags": tags,
+        "pinned": pinned,
+    }, session_id)
+
+    return jsonify({
+        "success": True,
+        "item_id": item_id,
+        "category": category,
+        "tags": tags,
+    })
+
+
+@app.route("/api/memory/<item_id>/tags", methods=["POST"])
+def api_update_tags(item_id: str):
+    """Update tags on a memory item."""
+    data = request.get_json()
+    tags = data.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    updated = db.update_memory_tags(item_id, tags)
+    if not updated:
+        return jsonify({"error": "Memory item not found"}), 404
+
+    db.log_audit_event("memory_tags_updated", {
+        "item_id": item_id,
+        "tags": tags,
+    }, session.get("session_id"))
+
+    return jsonify({"success": True, "item_id": item_id, "tags": tags})
+
+
+@app.route("/api/memory/<item_id>/pin", methods=["POST"])
+def api_toggle_pin(item_id: str):
+    """Toggle pin on a memory item. Pinned items persist across sessions."""
+    new_state = db.toggle_memory_pin(item_id)
+    if new_state is None:
+        return jsonify({"error": "Memory item not found"}), 404
+
+    db.log_audit_event("memory_pin_toggled", {
+        "item_id": item_id,
+        "pinned": new_state,
+    }, session.get("session_id"))
+
+    return jsonify({"success": True, "item_id": item_id, "pinned": new_state})
+
+
+@app.route("/api/memory/tags")
+def api_list_tags():
+    """List all tags used across memory items."""
+    tags = db.get_all_tags()
+    return jsonify(tags)
+
+
+@app.route("/api/memory/history")
+def api_memory_history():
+    """Get all memory across all sessions (historical view)."""
+    limit = min(int(request.args.get("limit", 200)), 1000)
+    items = db.get_historical_memory(limit)
+    return jsonify(items)
+
+
+@app.route("/api/db/status")
+def api_db_status():
+    """Get database backend status."""
+    total_counts = db.get_memory_counts(include_all=True)
+    tags = db.get_all_tags()
+    return jsonify({
+        "backend": db.backend,
+        "memory_counts": total_counts,
+        "total_tags": len(tags),
+        "tags": tags,
     })
 
 

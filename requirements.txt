@@ -23,3 +23,9 @@ groq>=0.4.0
 
 # OpenAI - More expensive option
 openai>=1.0.0
+
+# Database (PostgreSQL recommended, SQLite fallback is built-in)
+# ================================================================
+# Set DATABASE_URL env var to use PostgreSQL:
+#   export DATABASE_URL=postgresql://user:pass@localhost/intotheunknown
+psycopg2-binary>=2.9.0

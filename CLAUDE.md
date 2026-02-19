@@ -198,6 +198,15 @@ Auto-detection priority: Ollama (if running) > Groq (if API key) > OpenAI (if AP
 
 Override with: `export LLM_PROVIDER=groq`
 
+**Database** (choose one):
+
+| Backend | Package | Setup |
+|---------|---------|-------|
+| SQLite | Built-in | Default, zero config |
+| PostgreSQL | `psycopg2-binary` | Set `DATABASE_URL=postgresql://user:pass@localhost/intotheunknown` |
+
+PostgreSQL is recommended for production (native JSONB, GIN indexes on tags, better concurrency). SQLite is used automatically as fallback.
+
 ---
 
 ## Web UI Features
@@ -267,6 +276,12 @@ SQLite database (`data/memory.db`) stores:
 | `/api/memory/bulk-delete` | POST | Delete multiple memory items |
 | `/api/memory/clear-category` | POST | Clear memory category |
 | `/api/memory/clear-all` | POST | Clear all memory (requires confirm) |
+| `/api/memory/insert` | POST | Manually insert memory with tags |
+| `/api/memory/<id>/tags` | POST | Update tags on memory item |
+| `/api/memory/<id>/pin` | POST | Toggle pin on memory item |
+| `/api/memory/tags` | GET | List all unique tags |
+| `/api/memory/history` | GET | Get all memory across sessions |
+| `/api/db/status` | GET | Database backend status and stats |
 
 ---
 
